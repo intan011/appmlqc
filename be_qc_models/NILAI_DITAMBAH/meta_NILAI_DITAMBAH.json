@@ -1,0 +1,26 @@
+{
+  "target": "NILAI_DITAMBAH",
+  "features_num": [
+    "OUTPUT",
+    "INPUT",
+    "JUMLAH_PEKERJA",
+    "HARTA_TETAP",
+    "asset_per_worker"
+  ],
+  "features_cat": [
+    "MSIC_5D",
+    "SUBSEKTOR",
+    "SEKTOR",
+    "NEGERI",
+    "DAERAH"
+  ],
+  "preproc": "be_qc_models\\NILAI_DITAMBAH\\preproc_NILAI_DITAMBAH.joblib",
+  "lgb_lower": "be_qc_models\\NILAI_DITAMBAH\\lgb_NILAI_DITAMBAH_lower.txt",
+  "lgb_median": "be_qc_models\\NILAI_DITAMBAH\\lgb_NILAI_DITAMBAH_median.txt",
+  "lgb_upper": "be_qc_models\\NILAI_DITAMBAH\\lgb_NILAI_DITAMBAH_upper.txt",
+  "train_rows": 879067,
+  "resid_std": 63666943.37646581,
+  "resid_mae": 911244.915065479,
+  "resid_low": -200903.256379587,
+  "resid_high": 229861.18525964473
+}

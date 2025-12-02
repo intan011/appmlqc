@@ -1,0 +1,25 @@
+{
+  "target": "GAJI_UPAH",
+  "features_num": [
+    "JUMLAH_PEKERJA",
+    "OUTPUT",
+    "wage_per_worker",
+    "HARTA_TETAP"
+  ],
+  "features_cat": [
+    "MSIC_5D",
+    "SUBSEKTOR",
+    "SEKTOR",
+    "NEGERI",
+    "DAERAH"
+  ],
+  "preproc": "be_qc_models\\GAJI_UPAH\\preproc_GAJI_UPAH.joblib",
+  "lgb_lower": "be_qc_models\\GAJI_UPAH\\lgb_GAJI_UPAH_lower.txt",
+  "lgb_median": "be_qc_models\\GAJI_UPAH\\lgb_GAJI_UPAH_median.txt",
+  "lgb_upper": "be_qc_models\\GAJI_UPAH\\lgb_GAJI_UPAH_upper.txt",
+  "train_rows": 879067,
+  "resid_std": 5585560.397889985,
+  "resid_mae": 69513.83695508128,
+  "resid_low": -31826.013396723767,
+  "resid_high": 29918.241676334852
+}

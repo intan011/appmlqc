@@ -1,0 +1,26 @@
+{
+  "target": "JUMLAH_PEKERJA",
+  "features_num": [
+    "OUTPUT",
+    "INPUT",
+    "NILAI_DITAMBAH",
+    "GAJI_UPAH",
+    "HARTA_TETAP"
+  ],
+  "features_cat": [
+    "MSIC_5D",
+    "SUBSEKTOR",
+    "SEKTOR",
+    "NEGERI",
+    "DAERAH"
+  ],
+  "preproc": "be_qc_models\\JUMLAH_PEKERJA\\preproc_JUMLAH_PEKERJA.joblib",
+  "lgb_lower": "be_qc_models\\JUMLAH_PEKERJA\\lgb_JUMLAH_PEKERJA_lower.txt",
+  "lgb_median": "be_qc_models\\JUMLAH_PEKERJA\\lgb_JUMLAH_PEKERJA_median.txt",
+  "lgb_upper": "be_qc_models\\JUMLAH_PEKERJA\\lgb_JUMLAH_PEKERJA_upper.txt",
+  "train_rows": 879067,
+  "resid_std": 74.38206725233898,
+  "resid_mae": 4.09468159047548,
+  "resid_low": -5.798805491343797,
+  "resid_high": 9.840718861162992
+}

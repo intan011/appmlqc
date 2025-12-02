@@ -1,0 +1,131 @@
+{
+  "OUTPUT": {
+    "target": "OUTPUT",
+    "features_num": [
+      "JUMLAH_PEKERJA",
+      "HARTA_TETAP",
+      "GAJI_UPAH",
+      "log_workers",
+      "asset_per_worker"
+    ],
+    "features_cat": [
+      "MSIC_5D",
+      "SUBSEKTOR",
+      "SEKTOR",
+      "NEGERI",
+      "DAERAH"
+    ],
+    "preproc": "be_qc_models\\OUTPUT\\preproc_OUTPUT.joblib",
+    "lgb_lower": "be_qc_models\\OUTPUT\\lgb_OUTPUT_lower.txt",
+    "lgb_median": "be_qc_models\\OUTPUT\\lgb_OUTPUT_median.txt",
+    "lgb_upper": "be_qc_models\\OUTPUT\\lgb_OUTPUT_upper.txt",
+    "train_rows": 879067,
+    "resid_std": 138652273.22195807,
+    "resid_mae": 3120174.767456205,
+    "resid_low": -1364193.032600039,
+    "resid_high": 4652645.272808126
+  },
+  "INPUT": {
+    "target": "INPUT",
+    "features_num": [
+      "JUMLAH_PEKERJA",
+      "HARTA_TETAP",
+      "OUTPUT",
+      "log_workers",
+      "asset_per_worker"
+    ],
+    "features_cat": [
+      "MSIC_5D",
+      "SUBSEKTOR",
+      "SEKTOR",
+      "NEGERI",
+      "DAERAH"
+    ],
+    "preproc": "be_qc_models\\INPUT\\preproc_INPUT.joblib",
+    "lgb_lower": "be_qc_models\\INPUT\\lgb_INPUT_lower.txt",
+    "lgb_median": "be_qc_models\\INPUT\\lgb_INPUT_median.txt",
+    "lgb_upper": "be_qc_models\\INPUT\\lgb_INPUT_upper.txt",
+    "train_rows": 879067,
+    "resid_std": 98598388.20673905,
+    "resid_mae": 1612357.2929711365,
+    "resid_low": -488559.82753088785,
+    "resid_high": 542208.732929806
+  },
+  "NILAI_DITAMBAH": {
+    "target": "NILAI_DITAMBAH",
+    "features_num": [
+      "OUTPUT",
+      "INPUT",
+      "JUMLAH_PEKERJA",
+      "HARTA_TETAP",
+      "asset_per_worker"
+    ],
+    "features_cat": [
+      "MSIC_5D",
+      "SUBSEKTOR",
+      "SEKTOR",
+      "NEGERI",
+      "DAERAH"
+    ],
+    "preproc": "be_qc_models\\NILAI_DITAMBAH\\preproc_NILAI_DITAMBAH.joblib",
+    "lgb_lower": "be_qc_models\\NILAI_DITAMBAH\\lgb_NILAI_DITAMBAH_lower.txt",
+    "lgb_median": "be_qc_models\\NILAI_DITAMBAH\\lgb_NILAI_DITAMBAH_median.txt",
+    "lgb_upper": "be_qc_models\\NILAI_DITAMBAH\\lgb_NILAI_DITAMBAH_upper.txt",
+    "train_rows": 879067,
+    "resid_std": 63666943.37646581,
+    "resid_mae": 911244.915065479,
+    "resid_low": -200903.256379587,
+    "resid_high": 229861.18525964473
+  },
+  "GAJI_UPAH": {
+    "target": "GAJI_UPAH",
+    "features_num": [
+      "JUMLAH_PEKERJA",
+      "OUTPUT",
+      "wage_per_worker",
+      "HARTA_TETAP"
+    ],
+    "features_cat": [
+      "MSIC_5D",
+      "SUBSEKTOR",
+      "SEKTOR",
+      "NEGERI",
+      "DAERAH"
+    ],
+    "preproc": "be_qc_models\\GAJI_UPAH\\preproc_GAJI_UPAH.joblib",
+    "lgb_lower": "be_qc_models\\GAJI_UPAH\\lgb_GAJI_UPAH_lower.txt",
+    "lgb_median": "be_qc_models\\GAJI_UPAH\\lgb_GAJI_UPAH_median.txt",
+    "lgb_upper": "be_qc_models\\GAJI_UPAH\\lgb_GAJI_UPAH_upper.txt",
+    "train_rows": 879067,
+    "resid_std": 5585560.397889985,
+    "resid_mae": 69513.83695508128,
+    "resid_low": -31826.013396723767,
+    "resid_high": 29918.241676334852
+  },
+  "JUMLAH_PEKERJA": {
+    "target": "JUMLAH_PEKERJA",
+    "features_num": [
+      "OUTPUT",
+      "INPUT",
+      "NILAI_DITAMBAH",
+      "GAJI_UPAH",
+      "HARTA_TETAP"
+    ],
+    "features_cat": [
+      "MSIC_5D",
+      "SUBSEKTOR",
+      "SEKTOR",
+      "NEGERI",
+      "DAERAH"
+    ],
+    "preproc": "be_qc_models\\JUMLAH_PEKERJA\\preproc_JUMLAH_PEKERJA.joblib",
+    "lgb_lower": "be_qc_models\\JUMLAH_PEKERJA\\lgb_JUMLAH_PEKERJA_lower.txt",
+    "lgb_median": "be_qc_models\\JUMLAH_PEKERJA\\lgb_JUMLAH_PEKERJA_median.txt",
+    "lgb_upper": "be_qc_models\\JUMLAH_PEKERJA\\lgb_JUMLAH_PEKERJA_upper.txt",
+    "train_rows": 879067,
+    "resid_std": 74.38206725233898,
+    "resid_mae": 4.09468159047548,
+    "resid_low": -5.798805491343797,
+    "resid_high": 9.840718861162992
+  }
+}

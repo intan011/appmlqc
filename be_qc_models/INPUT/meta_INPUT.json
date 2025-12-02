@@ -1,0 +1,26 @@
+{
+  "target": "INPUT",
+  "features_num": [
+    "JUMLAH_PEKERJA",
+    "HARTA_TETAP",
+    "OUTPUT",
+    "log_workers",
+    "asset_per_worker"
+  ],
+  "features_cat": [
+    "MSIC_5D",
+    "SUBSEKTOR",
+    "SEKTOR",
+    "NEGERI",
+    "DAERAH"
+  ],
+  "preproc": "be_qc_models\\INPUT\\preproc_INPUT.joblib",
+  "lgb_lower": "be_qc_models\\INPUT\\lgb_INPUT_lower.txt",
+  "lgb_median": "be_qc_models\\INPUT\\lgb_INPUT_median.txt",
+  "lgb_upper": "be_qc_models\\INPUT\\lgb_INPUT_upper.txt",
+  "train_rows": 879067,
+  "resid_std": 98598388.20673905,
+  "resid_mae": 1612357.2929711365,
+  "resid_low": -488559.82753088785,
+  "resid_high": 542208.732929806
+}
