@@ -9,7 +9,6 @@ import os
 # Load prediction library
 # -----------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 sys.path.append(BASE_DIR)
 from be_qc_lib_saved import predict_new
 
@@ -44,14 +43,17 @@ st.title("BE 2026 — ML-Driven QC")
 # MODE SELECTOR
 # -----------------------------------------------------
 mode = st.radio("Select Mode:", ["Single Input", "Batch (CSV Upload)"], horizontal=True)
-
 selected = st.radio("Select Target:", TARGETS, index=0, horizontal=True)
 
+# Initialize session_state for run button
+if "run_pressed" not in st.session_state:
+    st.session_state["run_pressed"] = False
+
 # =======================================================================
-# MODE 1 — SINGLE INPUT (YOUR EXISTING FUNCTION)
+# MODE 1 — SINGLE INPUT
 # =======================================================================
 if mode == "Single Input":
-    
+
     st.sidebar.title(f"Input Data — {selected}")
     user_input = {}
     feats = FEATURES[selected]
@@ -82,7 +84,7 @@ if mode == "Single Input":
     daerah = st.sidebar.selectbox("DAERAH", daerah_opts, key=f"{selected}_daerah")
     user_input["DAERAH"] = daerah
 
-    # numeric
+    # numeric inputs
     for col in feats["num"]:
         key = f"{selected}_num_{col}"
         if col == "JUMLAH_PEKERJA":
@@ -90,21 +92,24 @@ if mode == "Single Input":
         else:
             user_input[col] = st.sidebar.number_input(col, min_value=0.0, format="%.2f", key=key)
 
+    # Run button
     run = st.sidebar.button(f"Run QC for {selected}", key=f"run_{selected}")
+    if run:
+        st.session_state["run_pressed"] = True
 
     # =================================================================
     # RUN PREDICTION (Single Row)
     # =================================================================
-    if run:
+    if st.session_state["run_pressed"]:
         df_input = pd.DataFrame([user_input])
         result = predict_new(df_input, out_dir=MODEL_DIR)
 
-        # filter selection
+        # Show Prediction Result table
         selected_cols = [c for c in result.columns if selected.lower() in c.lower()]
         st.subheader("Prediction Result")
         st.dataframe(result[selected_cols])
 
-        # Extract boundaries
+        # Extract prediction boundaries
         low_col = next((c for c in result.columns if "low" in c.lower() and selected.lower() in c.lower()), None)
         med_col = next((c for c in result.columns if "med" in c.lower() and selected.lower() in c.lower()), None)
         up_col  = next((c for c in result.columns if "up"  in c.lower() and selected.lower() in c.lower()), None)
@@ -127,12 +132,12 @@ if mode == "Single Input":
 
             st.info(explanation)
 
+            # Boundary plot
             fig = go.Figure()
             fig.add_vrect(x0=lb, x1=ub, fillcolor="lightblue", opacity=0.3)
             fig.add_vline(x=lb, line_dash="dash", line_color="blue")
             fig.add_vline(x=mb, line_color="black")
             fig.add_vline(x=ub, line_dash="dash", line_color="blue")
-
             fig.add_trace(go.Scatter(
                 x=[actual], y=[0],
                 mode="markers+text",
@@ -140,7 +145,6 @@ if mode == "Single Input":
                 text=[f"{actual:,.2f}"],
                 textposition="top center"
             ))
-
             fig.update_layout(
                 xaxis_title=f"{selected} Value",
                 yaxis=dict(showticklabels=False),
@@ -148,6 +152,7 @@ if mode == "Single Input":
             )
             st.plotly_chart(fig, use_container_width=True)
 
+        # Bar chart for numeric inputs
         bar_df = pd.DataFrame({
             "Category": feats["num"],
             "Value": [user_input[v] for v in feats["num"]]
@@ -156,14 +161,12 @@ if mode == "Single Input":
         st.plotly_chart(px.bar(bar_df, x="Category", y="Value", text="Value"), use_container_width=True)
 
 
-
 # =======================================================================
 # MODE 2 — BATCH INPUT (CSV UPLOAD)
 # =======================================================================
 if mode == "Batch (CSV Upload)":
 
     st.subheader("📁 Upload CSV file for batch QC prediction")
-
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
     if uploaded_file:
@@ -185,8 +188,6 @@ if mode == "Batch (CSV Upload)":
             med_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "med" in c.lower()), None)
             up_col  = next((c for c in result_batch.columns if selected.lower() in c.lower() and "up"  in c.lower()), None)
 
-            actual_col = selected   # from original dataset
-
             # -----------------------------------------------------
             # CONSTRUCT CLEAN OUTPUT TABLE
             # -----------------------------------------------------
@@ -203,11 +204,7 @@ if mode == "Batch (CSV Upload)":
                 actual = clean_df.iloc[i][selected]
                 lb = clean_df.iloc[i][f"{selected}_PRED_LOW"]
                 ub = clean_df.iloc[i][f"{selected}_PRED_UP"]
-
-                if actual < lb or actual > ub:
-                    flags.append(True)
-                else:
-                    flags.append(False)
+                flags.append(actual < lb or actual > ub)
 
             clean_df[f"{selected}_FLAG"] = flags
 
