@@ -101,48 +101,13 @@ if mode == "Single Input":
     # RUN PREDICTION (Single Row)
     # =================================================================
     if run:
-        try:
-            df_input = pd.DataFrame([user_input])
-            
-            # Check if model directory exists and list contents
-            if MODEL_DIR.exists():
-                st.write(f"✅ Model directory found at: {MODEL_DIR}")
-                subdirs = [d.name for d in MODEL_DIR.iterdir() if d.is_dir()]
-                st.write(f"📁 Subdirectories found: {subdirs}")
-                
-                # Check the specific target directory
-                target_dir = MODEL_DIR / selected
-                if target_dir.exists():
-                    st.write(f"✅ Target directory '{selected}' exists")
-                    files = [f.name for f in target_dir.iterdir()]
-                    st.write(f"📄 Files in {selected} directory: {files}")
-                else:
-                    st.error(f"❌ Target directory '{selected}' NOT found at: {target_dir}")
-            else:
-                st.error(f"❌ Model directory NOT found at: {MODEL_DIR}")
-            
-            # Run prediction
-            st.write(f"🔄 Running prediction with MODEL_DIR={str(MODEL_DIR)}")
-            result = predict_new(df_input, out_dir=str(MODEL_DIR))
+        df_input = pd.DataFrame([user_input])
+        result = predict_new(df_input, out_dir=str(MODEL_DIR))
 
-            # Debug: Show what columns were actually returned
-            st.write("**Debug - All columns returned:**", list(result.columns))
-            
-            # Show ALL columns for the selected target
-            st.subheader("Prediction Result")
-            selected_cols = [c for c in result.columns if selected in c]
-            st.write(f"**Filtered columns for {selected}:**", selected_cols)
-            
-            if not selected_cols or len(selected_cols) <= 1:
-                st.error(f"⚠️ Prediction columns missing! Only found: {selected_cols}")
-                st.warning("The model prediction did not run successfully. Check the error output above.")
-            
-            st.dataframe(result[selected_cols] if selected_cols else result)
-            
-        except Exception as e:
-            st.error(f"❌ Error during prediction: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
+        # Show ALL columns for the selected target
+        selected_cols = [c for c in result.columns if selected in c]
+        st.subheader("Prediction Result")
+        st.dataframe(result[selected_cols])
 
         # Extract boundaries
         low_col = next((c for c in result.columns if "low" in c.lower() and selected in c), None)
