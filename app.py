@@ -7,11 +7,11 @@ import plotly.graph_objects as go
 # -----------------------------------------------------
 # Load prediction library
 # -----------------------------------------------------
-sys.path.append(r"D:\ML FOR BE\app")
+sys.path.append(r"D:\app ML QC\app ML QC")
 from be_qc_lib_saved import predict_new
 
-MODEL_DIR = r"D:\ML FOR BE\app\be_qc_models"
-LOOKUP = r"D:\ML FOR BE\app\lookup"
+MODEL_DIR = r"D:\app ML QC\app ML QC\be_qc_models"
+LOOKUP = r"D:\app ML QC\app ML QC\lookup"
 
 # -----------------------------------------------------
 # Load lookups (dependency)
