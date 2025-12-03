@@ -1,25 +1,30 @@
 import streamlit as st
 import pandas as pd
-import sys
 import plotly.express as px
 import plotly.graph_objects as go
-import os
+from pathlib import Path
 
 # -----------------------------------------------------
-# Load prediction library
+# Load prediction library (assuming it's in the same repo)
 # -----------------------------------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR)
 from be_qc_lib_saved import predict_new
 
-MODEL_DIR = os.path.join(BASE_DIR, "be_qc_models")
-LOOKUP = os.path.join(BASE_DIR, "lookup")
+# Use relative paths that work in Streamlit Cloud
+BASE_DIR = Path(__file__).parent
+MODEL_DIR = BASE_DIR / "be_qc_models"
+LOOKUP_DIR = BASE_DIR / "lookup"
 
 # -----------------------------------------------------
 # Load lookups (dependency)
 # -----------------------------------------------------
-df_hierarchy = pd.read_csv(os.path.join(LOOKUP, "lookup_sektor_subsektor_msic.csv"))
-df_nd = pd.read_csv(os.path.join(LOOKUP, "lookup_negeri_daerah.csv"))
+@st.cache_data
+def load_lookups():
+    """Cache lookups to improve performance"""
+    df_hierarchy = pd.read_csv(LOOKUP_DIR / "lookup_sektor_subsektor_msic.csv")
+    df_nd = pd.read_csv(LOOKUP_DIR / "lookup_negeri_daerah.csv")
+    return df_hierarchy, df_nd
+
+df_hierarchy, df_nd = load_lookups()
 
 # -----------------------------------------------------
 # Targets + features
@@ -43,56 +48,62 @@ st.title("BE 2026 — ML-Driven QC")
 # MODE SELECTOR
 # -----------------------------------------------------
 mode = st.radio("Select Mode:", ["Single Input", "Batch (CSV Upload)"], horizontal=True)
+
 selected = st.radio("Select Target:", TARGETS, index=0, horizontal=True)
 
-# =====================================================
+# =======================================================================
 # MODE 1 — SINGLE INPUT
-# =====================================================
+# =======================================================================
 if mode == "Single Input":
+    
     st.sidebar.title(f"Input Data — {selected}")
     user_input = {}
     feats = FEATURES[selected]
 
-    # -----------------------
-    # Dropdowns
-    # -----------------------
+    # -------------------------------
+    # DEPENDENCY DROPDOWNS
+    # -------------------------------
     sektor_list = sorted(df_hierarchy["SEKTOR"].unique())
-    sektor = st.sidebar.selectbox("SEKTOR", sektor_list)
+    sektor = st.sidebar.selectbox("SEKTOR", sektor_list, key=f"{selected}_sektor")
     user_input["SEKTOR"] = sektor
 
     sub_opts = sorted(df_hierarchy[df_hierarchy["SEKTOR"] == sektor]["SUBSEKTOR"].unique())
-    subsektor = st.sidebar.selectbox("SUBSEKTOR", sub_opts)
+    subsektor = st.sidebar.selectbox("SUBSEKTOR", sub_opts, key=f"{selected}_subsektor")
     user_input["SUBSEKTOR"] = subsektor
 
     msic_opts = sorted(df_hierarchy[
         (df_hierarchy["SEKTOR"] == sektor) &
         (df_hierarchy["SUBSEKTOR"] == subsektor)
     ]["MSIC_5D"].unique())
-    msic = st.sidebar.selectbox("MSIC 5D", msic_opts)
+    msic = st.sidebar.selectbox("MSIC 5D", msic_opts, key=f"{selected}_msic")
     user_input["MSIC_5D"] = msic
 
     negeri_list = sorted(df_nd["NEGERI"].unique())
-    negeri = st.sidebar.selectbox("NEGERI", negeri_list)
+    negeri = st.sidebar.selectbox("NEGERI", negeri_list, key=f"{selected}_negeri")
     user_input["NEGERI"] = negeri
 
     daerah_opts = sorted(df_nd[df_nd["NEGERI"] == negeri]["DAERAH"].unique())
-    daerah = st.sidebar.selectbox("DAERAH", daerah_opts)
+    daerah = st.sidebar.selectbox("DAERAH", daerah_opts, key=f"{selected}_daerah")
     user_input["DAERAH"] = daerah
 
-    # Numeric inputs
+    # numeric
     for col in feats["num"]:
+        key = f"{selected}_num_{col}"
         if col == "JUMLAH_PEKERJA":
-            user_input[col] = st.sidebar.number_input(col, min_value=0, step=1)
+            user_input[col] = st.sidebar.number_input(col, min_value=0, step=1, key=key)
         else:
-            user_input[col] = st.sidebar.number_input(col, min_value=0.0, format="%.2f")
+            user_input[col] = st.sidebar.number_input(col, min_value=0.0, format="%.2f", key=key)
 
-    run = st.sidebar.button(f"Run QC for {selected}")
+    run = st.sidebar.button(f"Run QC for {selected}", key=f"run_{selected}")
 
+    # =================================================================
+    # RUN PREDICTION (Single Row)
+    # =================================================================
     if run:
         df_input = pd.DataFrame([user_input])
-        result = predict_new(df_input, out_dir=MODEL_DIR)
+        result = predict_new(df_input, out_dir=str(MODEL_DIR))
 
-        # Filter relevant columns
+        # filter selection
         selected_cols = [c for c in result.columns if selected.lower() in c.lower()]
         st.subheader("Prediction Result")
         st.dataframe(result[selected_cols])
@@ -108,38 +119,24 @@ if mode == "Single Input":
             ub = float(result[up_col].iloc[0])
             actual = float(user_input.get(selected, 0))
 
-            # Flag & explanation
             if actual < lb:
                 flag_color = "red"
                 explanation = "🔴 Below Lower Bound → Possible UNDER-reporting"
-                flag_val = True
             elif actual > ub:
                 flag_color = "red"
                 explanation = "🔴 Above Upper Bound → Possible OVER-reporting"
-                flag_val = True
             else:
                 flag_color = "green"
                 explanation = "🟢 Within Model Range → No anomaly"
-                flag_val = False
 
-            # Show info & table with flag
             st.info(explanation)
-            st.subheader("✅ Prediction Table with Flag")
-            table = pd.DataFrame({
-                f"{selected}_PRED_MED": [mb],
-                f"{selected}_PRED_LOW": [lb],
-                f"{selected}_PRED_UP": [ub],
-                selected: [actual],
-                f"{selected}_FLAG": [flag_val]
-            })
-            st.dataframe(table)
 
-            # Plot
             fig = go.Figure()
             fig.add_vrect(x0=lb, x1=ub, fillcolor="lightblue", opacity=0.3)
             fig.add_vline(x=lb, line_dash="dash", line_color="blue")
             fig.add_vline(x=mb, line_color="black")
             fig.add_vline(x=ub, line_dash="dash", line_color="blue")
+
             fig.add_trace(go.Scatter(
                 x=[actual], y=[0],
                 mode="markers+text",
@@ -147,6 +144,7 @@ if mode == "Single Input":
                 text=[f"{actual:,.2f}"],
                 textposition="top center"
             ))
+
             fig.update_layout(
                 xaxis_title=f"{selected} Value",
                 yaxis=dict(showticklabels=False),
@@ -154,7 +152,6 @@ if mode == "Single Input":
             )
             st.plotly_chart(fig, use_container_width=True)
 
-        # Numeric inputs bar chart
         bar_df = pd.DataFrame({
             "Category": feats["num"],
             "Value": [user_input[v] for v in feats["num"]]
@@ -162,11 +159,15 @@ if mode == "Single Input":
         st.subheader("📊 Numeric Inputs Used")
         st.plotly_chart(px.bar(bar_df, x="Category", y="Value", text="Value"), use_container_width=True)
 
-# =====================================================
-# MODE 2 — BATCH INPUT
-# =====================================================
+
+
+# =======================================================================
+# MODE 2 — BATCH INPUT (CSV UPLOAD)
+# =======================================================================
 if mode == "Batch (CSV Upload)":
+
     st.subheader("📁 Upload CSV file for batch QC prediction")
+
     uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
     if uploaded_file:
@@ -175,35 +176,54 @@ if mode == "Batch (CSV Upload)":
         st.dataframe(df_batch.head())
 
         if st.button("Run Batch Prediction"):
-            result_batch = predict_new(df_batch, out_dir=MODEL_DIR)
 
-            # Include NO_SIRI if exists
+            # Run prediction on entire dataset
+            result_batch = predict_new(df_batch, out_dir=str(MODEL_DIR))
+
+            # ALWAYS include NO_SIRI
             if "NO_SIRI" in df_batch.columns:
                 result_batch["NO_SIRI"] = df_batch["NO_SIRI"]
 
-            # Identify prediction columns
+            # Identify prediction columns for selected target
             low_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "low" in c.lower()), None)
             med_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "med" in c.lower()), None)
-            up_col  = next((c for c in result_batch.columns if selected.lower() in c.lower() and "up" in c.lower()), None)
+            up_col  = next((c for c in result_batch.columns if selected.lower() in c.lower() and "up"  in c.lower()), None)
 
-            # Construct clean output
+            actual_col = selected   # from original dataset
+
+            # -----------------------------------------------------
+            # CONSTRUCT CLEAN OUTPUT TABLE
+            # -----------------------------------------------------
             clean_df = pd.DataFrame()
             clean_df["NO_SIRI"] = df_batch["NO_SIRI"]
-            clean_df[selected] = df_batch[selected]
+            clean_df[selected] = df_batch[selected]                      # actual value
             clean_df[f"{selected}_PRED_LOW"] = result_batch[low_col]
             clean_df[f"{selected}_PRED_MED"] = result_batch[med_col]
             clean_df[f"{selected}_PRED_UP"] = result_batch[up_col]
 
-            # Compute FLAG
-            clean_df[f"{selected}_FLAG"] = clean_df.apply(
-                lambda x: x[selected] < x[f"{selected}_PRED_LOW"] or x[selected] > x[f"{selected}_PRED_UP"], axis=1
-            )
+            # Compute flag ONLY for this selected target
+            flags = []
+            for i in range(len(clean_df)):
+                actual = clean_df.iloc[i][selected]
+                lb = clean_df.iloc[i][f"{selected}_PRED_LOW"]
+                ub = clean_df.iloc[i][f"{selected}_PRED_UP"]
 
-            # Split issue / ok
-            df_issue = clean_df[clean_df[f"{selected}_FLAG"]]
-            df_ok = clean_df[~clean_df[f"{selected}_FLAG"]]
+                if actual < lb or actual > ub:
+                    flags.append(True)
+                else:
+                    flags.append(False)
 
-            # Summary
+            clean_df[f"{selected}_FLAG"] = flags
+
+            # -----------------------------------------------------
+            # SPLIT INTO ISSUE / OK
+            # -----------------------------------------------------
+            df_issue = clean_df[clean_df[f"{selected}_FLAG"] == True]
+            df_ok    = clean_df[clean_df[f"{selected}_FLAG"] == False]
+
+            # -----------------------------------------------------
+            # SUMMARY
+            # -----------------------------------------------------
             total = len(clean_df)
             total_issue = len(df_issue)
             total_ok = len(df_ok)
@@ -217,14 +237,21 @@ if mode == "Batch (CSV Upload)":
             **Records OK:** {total_ok} ({pct_ok}%)  
             """)
 
-            # Display tables
+            # -----------------------------------------------------
+            # DISPLAY TABLES
+            # -----------------------------------------------------
             st.subheader(f"⚠️ Records with Issues ({selected})")
-            st.dataframe(df_issue if not df_issue.empty else pd.DataFrame())
+            if df_issue.empty:
+                st.success("Tiada rekod isu untuk target ini 🎉")
+            else:
+                st.dataframe(df_issue)
 
             st.subheader(f"✅ Records without Issues ({selected})")
-            st.dataframe(df_ok if not df_ok.empty else pd.DataFrame())
+            st.dataframe(df_ok)
 
-            # Download buttons
+            # -----------------------------------------------------
+            # DOWNLOAD BUTTONS
+            # -----------------------------------------------------
             st.download_button(
                 f"📥 Download Only Issues ({selected})",
                 df_issue.to_csv(index=False).encode('utf-8'),
