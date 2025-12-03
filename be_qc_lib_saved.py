@@ -100,14 +100,9 @@ def predict_new(df_new, out_dir="be_qc_models", targets=None):
     
     for t in targets:
         try:
-            print(f"Loading models for target: {t}")
             preproc, m_low, m_med, m_up, meta = load_target_models(out_dir, t)
-            print(f"✓ Successfully loaded models for {t}")
         except Exception as e:
             # artifact missing; skip this target
-            print(f"✗ Warning: Could not load models for {t}: {str(e)}")
-            import traceback
-            print(traceback.format_exc())
             continue
         
         feats_num = meta.get("features_num", [])
@@ -131,7 +126,6 @@ def predict_new(df_new, out_dir="be_qc_models", targets=None):
         df_out[f"{t}_PRED_MED"] = m_med.predict(X)
         df_out[f"{t}_PRED_LOW"] = m_low.predict(X)
         df_out[f"{t}_PRED_UP"]  = m_up.predict(X)
-        print(f"✓ Predictions generated for {t}")
         
         # Flag if reported outside predicted interval (if reported exists)
         if t in df_out.columns:
