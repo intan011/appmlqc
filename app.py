@@ -104,9 +104,13 @@ if mode == "Single Input":
         df_input = pd.DataFrame([user_input])
         result = predict_new(df_input, out_dir=str(MODEL_DIR))
 
+        # Debug: Show what columns were actually returned
+        st.write("**Debug - All columns returned:**", list(result.columns))
+        
         # Show ALL columns for the selected target (including PRED_MED, PRED_LOW, PRED_UP, FLAG)
         st.subheader("Prediction Result")
         selected_cols = [c for c in result.columns if selected in c]
+        st.write(f"**Filtered columns for {selected}:**", selected_cols)
         st.dataframe(result[selected_cols])
 
         # Extract boundaries
