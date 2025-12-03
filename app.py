@@ -1,90 +1,140 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import sys
+import os
 import plotly.express as px
 import plotly.graph_objects as go
-import os
+from pathlib import Path
 
 # -----------------------------------------------------
 # Configuration for Streamlit Cloud
 # -----------------------------------------------------
-# For Streamlit Cloud, we need to handle paths differently
-# Assuming you'll upload your model files to Streamlit Cloud
+# Set page config first
+st.set_page_config(
+    page_title="BE 2026 QC System",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Check if we're running on Streamlit Cloud
-is_streamlit_cloud = os.path.exists('/app')
+# Detect if we're on Streamlit Cloud
+IS_STREAMLIT_CLOUD = os.path.exists('/app')
 
-# Set base paths based on environment
-if is_streamlit_cloud:
-    # Streamlit Cloud paths
-    BASE_DIR = "."
-    MODEL_DIR = "./be_qc_models"
-    LOOKUP_DIR = "./lookup"
+# Setup paths based on environment
+if IS_STREAMLIT_CLOUD:
+    # Streamlit Cloud - use relative paths
+    BASE_DIR = Path(".")
+    MODEL_DIR = BASE_DIR / "be_qc_models"
+    LOOKUP_DIR = BASE_DIR / "lookup"
+    
+    # Add current directory to Python path
+    sys.path.append(str(BASE_DIR))
 else:
-    # Local development paths
-    BASE_DIR = r"D:\app ML QC2\app ML QC"
-    MODEL_DIR = r"D:\app ML QC2\app ML QC\be_qc_models"
-    LOOKUP_DIR = r"D:\app ML QC2\app ML QC\lookup"
+    # Local development - use your original paths
+    BASE_DIR = Path(r"D:\app ML QC2\app ML QC")
+    MODEL_DIR = BASE_DIR / "be_qc_models"
+    LOOKUP_DIR = BASE_DIR / "lookup"
+    sys.path.append(str(BASE_DIR))
 
 # -----------------------------------------------------
-# Load prediction library - need to handle differently for cloud
-# -----------------------------------------------------
-try:
-    # Try to import from a local module first
-    sys.path.append(BASE_DIR)
-    from be_qc_lib_saved import predict_new
-    st.success("✅ Prediction library loaded successfully!")
-except ImportError as e:
-    st.error(f"❌ Error loading prediction library: {e}")
-    st.info("Please ensure 'be_qc_lib_saved.py' is in the correct location.")
-    
-    # Create a dummy function for demo purposes
-    def predict_new(df_input, out_dir=""):
-        st.warning("⚠️ Using dummy prediction function - replace with actual model")
-        # Create dummy predictions for demo
-        import numpy as np
-        result = df_input.copy()
-        for col in ['OUTPUT', 'INPUT', 'NILAI_DITAMBAH', 'GAJI_UPAH', 'JUMLAH_PEKERJA']:
-            if col in df_input.columns:
-                # Create dummy predictions
-                value = df_input[col].values[0] if len(df_input) == 1 else df_input[col].values
-                noise = np.random.uniform(0.8, 1.2, size=len(df_input))
-                result[f'{col.lower()}_pred_low'] = value * noise * 0.8
-                result[f'{col.lower()}_pred_med'] = value * noise
-                result[f'{col.lower()}_pred_up'] = value * noise * 1.2
-        return result
-
-# -----------------------------------------------------
-# Load lookups (dependency)
-# -----------------------------------------------------
-try:
-    # Try to load from local files first
-    df_hierarchy = pd.read_csv(f"{LOOKUP_DIR}/lookup_sektor_subsektor_msic.csv")
-    df_nd = pd.read_csv(f"{LOOKUP_DIR}/lookup_negeri_daerah.csv")
-    st.success("✅ Lookup tables loaded successfully!")
-except FileNotFoundError as e:
-    st.warning(f"⚠️ Lookup files not found at {LOOKUP_DIR}. Creating sample data.")
-    
-    # Create sample lookup data for demonstration
-    df_hierarchy = pd.DataFrame({
-        'SEKTOR': ['Manufacturing', 'Services', 'Construction', 'Agriculture'],
-        'SUBSEKTOR': ['Food Processing', 'IT Services', 'Residential', 'Crops'],
-        'MSIC_5D': ['10101', '62010', '41001', '01111']
-    })
-    
-    df_nd = pd.DataFrame({
-        'NEGERI': ['Selangor', 'Kuala Lumpur', 'Johor', 'Penang'],
-        'DAERAH': ['Petaling', 'Kuala Lumpur', 'Johor Bahru', 'Timur Laut']
-    })
-
-# -----------------------------------------------------
-# Session state initialization
+# Initialize session state
 # -----------------------------------------------------
 if 'predictions' not in st.session_state:
     st.session_state.predictions = None
+if 'batch_results' not in st.session_state:
+    st.session_state.batch_results = None
 
 # -----------------------------------------------------
-# Targets + features
+# Load prediction library with better error handling
+# -----------------------------------------------------
+@st.cache_resource
+def load_prediction_library():
+    """Load the prediction library with caching"""
+    try:
+        from be_qc_lib_saved import predict_new
+        return predict_new
+    except ImportError as e:
+        st.error(f"Error loading prediction library: {e}")
+        # Create a fallback function
+        def fallback_predict(df_input, out_dir=""):
+            st.warning("⚠️ Using fallback prediction - ensure your model files are uploaded")
+            # Return dummy predictions with the expected structure
+            result = df_input.copy()
+            targets = ["OUTPUT", "INPUT", "NILAI_DITAMBAH", "GAJI_UPAH", "JUMLAH_PEKERJA"]
+            for target in targets:
+                if target in df_input.columns:
+                    values = df_input[target].values
+                    # Simple dummy predictions
+                    np.random.seed(42)
+                    noise = np.random.uniform(0.8, 1.2, size=len(df_input))
+                    result[f'{target.lower()}_pred_low'] = values * noise * 0.8
+                    result[f'{target.lower()}_pred_med'] = values * noise
+                    result[f'{target.lower()}_pred_up'] = values * noise * 1.2
+            return result
+        return fallback_predict
+
+# Load the prediction function
+predict_new = load_prediction_library()
+
+# -----------------------------------------------------
+# Load lookup data
+# -----------------------------------------------------
+@st.cache_data
+def load_lookup_data():
+    """Load lookup tables with caching"""
+    try:
+        # Try multiple possible file locations
+        possible_paths = [
+            LOOKUP_DIR / "lookup_sektor_subsektor_msic.csv",
+            Path("lookup_sektor_subsektor_msic.csv"),
+            Path("./lookup/lookup_sektor_subsektor_msic.csv")
+        ]
+        
+        for path in possible_paths:
+            if path.exists():
+                df_hierarchy = pd.read_csv(path)
+                break
+        else:
+            raise FileNotFoundError("Could not find hierarchy lookup file")
+        
+        # Load second lookup
+        possible_paths_nd = [
+            LOOKUP_DIR / "lookup_negeri_daerah.csv",
+            Path("lookup_negeri_daerah.csv"),
+            Path("./lookup/lookup_negeri_daerah.csv")
+        ]
+        
+        for path in possible_paths_nd:
+            if path.exists():
+                df_nd = pd.read_csv(path)
+                break
+        else:
+            raise FileNotFoundError("Could not find negeri/daerah lookup file")
+        
+        return df_hierarchy, df_nd
+        
+    except Exception as e:
+        st.warning(f"Using sample lookup data: {e}")
+        # Create sample data
+        df_hierarchy = pd.DataFrame({
+            'SEKTOR': ['Manufacturing', 'Services', 'Construction', 'Agriculture'] * 3,
+            'SUBSEKTOR': ['Food Processing', 'IT Services', 'Residential', 'Crops'] * 3,
+            'MSIC_5D': [f'{i:05d}' for i in range(10101, 10113)]
+        })
+        
+        df_nd = pd.DataFrame({
+            'NEGERI': ['Selangor', 'Kuala Lumpur', 'Johor', 'Penang', 'Sabah', 'Sarawak'] * 2,
+            'DAERAH': [f'Daerah {i}' for i in range(1, 13)]
+        })
+        
+        return df_hierarchy, df_nd
+
+# Load lookup tables
+df_hierarchy, df_nd = load_lookup_data()
+
+# -----------------------------------------------------
+# Constants
 # -----------------------------------------------------
 TARGETS = ["OUTPUT", "INPUT", "NILAI_DITAMBAH", "GAJI_UPAH", "JUMLAH_PEKERJA"]
 
@@ -97,97 +147,191 @@ FEATURES = {
 }
 
 # -----------------------------------------------------
+# Custom CSS for better UI
+# -----------------------------------------------------
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        color: #1E3A8A;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .sub-header {
+        font-size: 1.2rem;
+        color: #4B5563;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .stButton > button {
+        width: 100%;
+        background-color: #1E40AF;
+        color: white;
+        font-weight: bold;
+    }
+    .stButton > button:hover {
+        background-color: #1E3A8A;
+    }
+    .success-box {
+        padding: 1rem;
+        background-color: #D1FAE5;
+        border-radius: 0.5rem;
+        border-left: 4px solid #10B981;
+    }
+    .warning-box {
+        padding: 1rem;
+        background-color: #FEF3C7;
+        border-radius: 0.5rem;
+        border-left: 4px solid #F59E0B;
+    }
+    .metric-card {
+        background-color: #F8FAFC;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #E2E8F0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# -----------------------------------------------------
 # UI Header
 # -----------------------------------------------------
-st.title("📊 BE 2026 — ML-Driven Quality Control")
+st.markdown('<h1 class="main-header">📊 BE 2026 — ML-Driven Quality Control</h1>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Machine Learning powered data validation and anomaly detection</p>', unsafe_allow_html=True)
 st.markdown("---")
 
-# Add environment indicator
-env_status = "☁️ Streamlit Cloud" if is_streamlit_cloud else "💻 Local Development"
-st.sidebar.markdown(f"**Environment:** {env_status}")
+# Sidebar info
+with st.sidebar:
+    st.image("https://streamlit.io/images/brand/streamlit-mark-color.png", width=50)
+    st.title("Settings")
+    
+    # Environment info
+    env_status = "☁️ Streamlit Cloud" if IS_STREAMLIT_CLOUD else "💻 Local Development"
+    st.info(f"**Environment:** {env_status}")
+    
+    # File structure check
+    if st.checkbox("Check file structure", help="Verify required files are present"):
+        st.write("**Required files:**")
+        files_to_check = [
+            ("be_qc_lib_saved.py", BASE_DIR / "be_qc_lib_saved.py"),
+            ("Model directory", MODEL_DIR),
+            ("Lookup directory", LOOKUP_DIR),
+        ]
+        
+        for file_name, file_path in files_to_check:
+            exists = file_path.exists()
+            icon = "✅" if exists else "❌"
+            st.write(f"{icon} {file_name}: {file_path}")
+            
+            if not exists and file_name == "be_qc_lib_saved.py":
+                st.warning("Main prediction library not found!")
+            elif not exists and "directory" in file_name:
+                st.warning(f"{file_name} not found!")
 
 # -----------------------------------------------------
 # MODE SELECTOR
 # -----------------------------------------------------
-mode = st.radio("Select Mode:", ["Single Input", "Batch (CSV Upload)"], horizontal=True)
+st.header("🔧 Analysis Mode")
 
-selected = st.radio("Select Target Variable:", TARGETS, index=0, horizontal=True)
+col1, col2 = st.columns([1, 2])
+with col1:
+    mode = st.radio("**Select Mode:**", ["Single Input", "Batch (CSV Upload)"], horizontal=True)
+with col2:
+    selected = st.radio("**Select Target Variable:**", TARGETS, index=0, horizontal=True)
+
+st.markdown("---")
 
 # =======================================================================
 # MODE 1 — SINGLE INPUT
 # =======================================================================
 if mode == "Single Input":
     
-    st.sidebar.header(f"📝 Input Data — {selected}")
-    user_input = {}
-    feats = FEATURES[selected]
+    st.header(f"📝 Single Record Analysis — {selected}")
+    
+    col_left, col_right = st.columns([1, 2])
+    
+    with col_left:
+        st.subheader("Input Parameters")
+        user_input = {}
+        feats = FEATURES[selected]
 
-    # -------------------------------
-    # DEPENDENCY DROPDOWNS
-    # -------------------------------
-    sektor_list = sorted(df_hierarchy["SEKTOR"].unique())
-    sektor = st.sidebar.selectbox("SEKTOR", sektor_list, key=f"{selected}_sektor")
-    user_input["SEKTOR"] = sektor
+        # Categorical inputs
+        sektor_list = sorted(df_hierarchy["SEKTOR"].unique())
+        sektor = st.selectbox("**SEKTOR**", sektor_list, key=f"{selected}_sektor")
+        user_input["SEKTOR"] = sektor
 
-    sub_opts = sorted(df_hierarchy[df_hierarchy["SEKTOR"] == sektor]["SUBSEKTOR"].unique())
-    subsektor = st.sidebar.selectbox("SUBSEKTOR", sub_opts, key=f"{selected}_subsektor")
-    user_input["SUBSEKTOR"] = subsektor
+        sub_opts = sorted(df_hierarchy[df_hierarchy["SEKTOR"] == sektor]["SUBSEKTOR"].unique())
+        subsektor = st.selectbox("**SUBSEKTOR**", sub_opts, key=f"{selected}_subsektor")
+        user_input["SUBSEKTOR"] = subsektor
 
-    msic_opts = sorted(df_hierarchy[
-        (df_hierarchy["SEKTOR"] == sektor) &
-        (df_hierarchy["SUBSEKTOR"] == subsektor)
-    ]["MSIC_5D"].unique())
-    msic = st.sidebar.selectbox("MSIC 5D", msic_opts, key=f"{selected}_msic")
-    user_input["MSIC_5D"] = msic
+        msic_opts = sorted(df_hierarchy[
+            (df_hierarchy["SEKTOR"] == sektor) &
+            (df_hierarchy["SUBSEKTOR"] == subsektor)
+        ]["MSIC_5D"].unique())
+        msic = st.selectbox("**MSIC 5D**", msic_opts, key=f"{selected}_msic")
+        user_input["MSIC_5D"] = msic
 
-    negeri_list = sorted(df_nd["NEGERI"].unique())
-    negeri = st.sidebar.selectbox("NEGERI", negeri_list, key=f"{selected}_negeri")
-    user_input["NEGERI"] = negeri
+        negeri_list = sorted(df_nd["NEGERI"].unique())
+        negeri = st.selectbox("**NEGERI**", negeri_list, key=f"{selected}_negeri")
+        user_input["NEGERI"] = negeri
 
-    daerah_opts = sorted(df_nd[df_nd["NEGERI"] == negeri]["DAERAH"].unique())
-    daerah = st.sidebar.selectbox("DAERAH", daerah_opts, key=f"{selected}_daerah")
-    user_input["DAERAH"] = daerah
+        daerah_opts = sorted(df_nd[df_nd["NEGERI"] == negeri]["DAERAH"].unique())
+        daerah = st.selectbox("**DAERAH**", daerah_opts, key=f"{selected}_daerah")
+        user_input["DAERAH"] = daerah
 
-    # numeric inputs
-    st.sidebar.markdown("### Numeric Inputs")
-    for col in feats["num"]:
-        key = f"{selected}_num_{col}"
-        if col == "JUMLAH_PEKERJA":
-            user_input[col] = st.sidebar.number_input(
-                col, 
-                min_value=0, 
-                step=1, 
-                key=key,
-                help=f"Enter value for {col}"
-            )
-        else:
-            user_input[col] = st.sidebar.number_input(
-                col, 
-                min_value=0.0, 
-                format="%.2f", 
-                key=key,
-                help=f"Enter value for {col}"
-            )
+        # Numeric inputs
+        st.subheader("Numeric Values")
+        for col in feats["num"]:
+            key = f"{selected}_num_{col}"
+            if col == "JUMLAH_PEKERJA":
+                user_input[col] = st.number_input(
+                    f"**{col}**", 
+                    min_value=0, 
+                    step=1, 
+                    key=key,
+                    help="Number of workers"
+                )
+            else:
+                user_input[col] = st.number_input(
+                    f"**{col}**", 
+                    min_value=0.0, 
+                    step=1000.0,
+                    format="%.2f", 
+                    key=key,
+                    help=f"Value for {col}"
+                )
 
-    run = st.sidebar.button(f"🚀 Run QC Analysis for {selected}", key=f"run_{selected}")
+        # Run button
+        run_button = st.button(
+            f"🚀 Run QC Analysis for {selected}", 
+            key=f"run_{selected}",
+            type="primary",
+            use_container_width=True
+        )
+
+    with col_right:
+        # Display current inputs
+        st.subheader("Current Input Summary")
+        if user_input:
+            input_df = pd.DataFrame([user_input])
+            st.dataframe(input_df.T.rename(columns={0: "Value"}), use_container_width=True)
 
     # =================================================================
     # RUN PREDICTION (Single Row)
     # =================================================================
-    if run:
-        with st.spinner("Running QC analysis..."):
-            df_input = pd.DataFrame([user_input])
-            
+    if run_button:
+        with st.spinner("🔍 Running QC analysis..."):
             try:
-                result = predict_new(df_input, out_dir=MODEL_DIR)
+                df_input = pd.DataFrame([user_input])
+                result = predict_new(df_input, out_dir=str(MODEL_DIR))
                 st.session_state.predictions = result
                 
-                # filter selection
-                selected_cols = [c for c in result.columns if selected.lower() in c.lower()]
+                # Display results
+                st.success("✅ Analysis completed!")
                 
-                st.subheader("📈 Prediction Results")
-                st.dataframe(result[selected_cols], use_container_width=True)
-
+                # Results in columns
+                st.subheader("📊 Prediction Results")
+                
                 # Extract boundaries
                 low_col = next((c for c in result.columns if "low" in c.lower() and selected.lower() in c.lower()), None)
                 med_col = next((c for c in result.columns if "med" in c.lower() and selected.lower() in c.lower()), None)
@@ -199,237 +343,307 @@ if mode == "Single Input":
                     ub = float(result[up_col].iloc[0])
                     actual = float(user_input.get(selected, 0))
 
-                    # Create result card
-                    col1, col2, col3 = st.columns(3)
+                    # Metrics
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
                         st.metric("Actual Value", f"{actual:,.2f}")
                     with col2:
                         st.metric("Predicted Median", f"{mb:,.2f}")
                     with col3:
-                        st.metric("Range", f"{lb:,.2f} - {ub:,.2f}")
+                        st.metric("Lower Bound", f"{lb:,.2f}")
+                    with col4:
+                        st.metric("Upper Bound", f"{ub:,.2f}")
 
-                    # Determine flag status
+                    # Flag determination
                     if actual < lb:
+                        flag_icon = "🔴"
+                        flag_text = "Below Lower Bound"
                         flag_color = "red"
-                        explanation = "🔴 **Below Lower Bound** — Possible UNDER-reporting"
-                        st.error(explanation)
+                        flag_explanation = "Possible UNDER-reporting detected"
+                        st.markdown(f"""
+                        <div class="warning-box">
+                            <h4>{flag_icon} {flag_text}</h4>
+                            <p>{flag_explanation}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                     elif actual > ub:
+                        flag_icon = "🔴"
+                        flag_text = "Above Upper Bound"
                         flag_color = "red"
-                        explanation = "🔴 **Above Upper Bound** — Possible OVER-reporting"
-                        st.error(explanation)
+                        flag_explanation = "Possible OVER-reporting detected"
+                        st.markdown(f"""
+                        <div class="warning-box">
+                            <h4>{flag_icon} {flag_text}</h4>
+                            <p>{flag_explanation}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                     else:
+                        flag_icon = "🟢"
+                        flag_text = "Within Range"
                         flag_color = "green"
-                        explanation = "🟢 **Within Model Range** — No anomaly detected"
-                        st.success(explanation)
+                        flag_explanation = "No anomaly detected"
+                        st.markdown(f"""
+                        <div class="success-box">
+                            <h4>{flag_icon} {flag_text}</h4>
+                            <p>{flag_explanation}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-                    # Create visualization
+                    # Visualization
                     fig = go.Figure()
-                    fig.add_vrect(x0=lb, x1=ub, fillcolor="lightblue", opacity=0.3, 
-                                annotation_text="Acceptable Range", annotation_position="top left")
+                    
+                    # Add range rectangle
+                    fig.add_vrect(
+                        x0=lb, x1=ub,
+                        fillcolor="lightgreen" if flag_color == "green" else "lightcoral",
+                        opacity=0.3,
+                        annotation_text="Acceptable Range",
+                        annotation_position="top left"
+                    )
+                    
+                    # Add boundary lines
                     fig.add_vline(x=lb, line_dash="dash", line_color="blue", 
                                 annotation_text=f"Lower: {lb:,.2f}")
-                    fig.add_vline(x=mb, line_color="black", 
+                    fig.add_vline(x=mb, line_color="black", line_width=2,
                                 annotation_text=f"Median: {mb:,.2f}")
-                    fig.add_vline(x=ub, line_dash="dash", line_color="blue", 
+                    fig.add_vline(x=ub, line_dash="dash", line_color="blue",
                                 annotation_text=f"Upper: {ub:,.2f}")
-
+                    
+                    # Add actual value marker
                     fig.add_trace(go.Scatter(
-                        x=[actual], y=[0],
+                        x=[actual], y=[0.5],
                         mode="markers+text",
-                        marker=dict(color=flag_color, size=20),
+                        marker=dict(
+                            color=flag_color,
+                            size=25,
+                            symbol="diamond"
+                        ),
                         text=[f"Actual: {actual:,.2f}"],
                         textposition="top center",
-                        name="Actual Value"
+                        name="Actual Value",
+                        hovertemplate=f"<b>Actual Value</b><br>{actual:,.2f}<extra></extra>"
                     ))
-
+                    
                     fig.update_layout(
                         title=f"QC Analysis for {selected}",
                         xaxis_title=f"{selected} Value",
-                        yaxis=dict(showticklabels=False, range=[-0.5, 1]),
-                        height=300,
-                        showlegend=True
+                        yaxis=dict(
+                            showticklabels=False,
+                            range=[0, 1]
+                        ),
+                        height=350,
+                        showlegend=True,
+                        hovermode="x unified"
                     )
+                    
                     st.plotly_chart(fig, use_container_width=True)
-
-                # Show numeric inputs as bar chart
-                bar_df = pd.DataFrame({
-                    "Category": feats["num"],
-                    "Value": [user_input[v] for v in feats["num"]]
-                })
-                st.subheader("📊 Input Values Used")
-                fig_bar = px.bar(bar_df, x="Category", y="Value", text="Value",
-                               title=f"Input Values for {selected}")
-                fig_bar.update_traces(texttemplate='%{y:,.2f}', textposition='outside')
-                st.plotly_chart(fig_bar, use_container_width=True)
                 
+                # Show detailed results
+                with st.expander("📋 View Detailed Results"):
+                    st.dataframe(result, use_container_width=True)
+                    
             except Exception as e:
-                st.error(f"Error during prediction: {str(e)}")
-                st.info("Please check your model files and input data.")
+                st.error(f"❌ Error during analysis: {str(e)}")
+                st.info("Please check your inputs and try again.")
 
 # =======================================================================
 # MODE 2 — BATCH INPUT (CSV UPLOAD)
 # =======================================================================
 else:
-    st.subheader("📁 Batch Processing with CSV Upload")
-
-    # File uploader
+    st.header("📁 Batch Processing")
+    
+    st.markdown("""
+    Upload a CSV file containing your data for batch quality control analysis.
+    The file should include at least:
+    - `NO_SIRI`: Unique identifier
+    - The selected target column
+    - Any required feature columns
+    """)
+    
+    # File upload
     uploaded_file = st.file_uploader(
-        "Upload your CSV file", 
+        "Choose a CSV file",
         type=["csv"],
-        help="Upload a CSV file containing your data for batch processing"
+        help="Upload your data for batch processing"
     )
-
+    
     if uploaded_file:
-        df_batch = pd.read_csv(uploaded_file)
-        
-        # Show file info
-        st.success(f"✅ File uploaded successfully! Shape: {df_batch.shape}")
-        
-        with st.expander("🔍 Preview uploaded data"):
-            st.dataframe(df_batch.head(), use_container_width=True)
-            st.caption(f"Total rows: {len(df_batch)} | Columns: {', '.join(df_batch.columns.tolist())}")
-
-        # Check for required columns
-        required_cols = ['NO_SIRI', selected]
-        missing_cols = [col for col in required_cols if col not in df_batch.columns]
-        
-        if missing_cols:
-            st.warning(f"⚠️ Missing required columns: {', '.join(missing_cols)}")
-            st.info("Your CSV should contain at least 'NO_SIRI' and the selected target column.")
-        else:
-            if st.button("🚀 Run Batch Prediction", type="primary"):
-                with st.spinner("Processing batch data..."):
-                    try:
-                        # Run prediction on entire dataset
-                        result_batch = predict_new(df_batch, out_dir=MODEL_DIR)
-
-                        # ALWAYS include NO_SIRI
-                        if "NO_SIRI" in df_batch.columns:
-                            result_batch["NO_SIRI"] = df_batch["NO_SIRI"]
-
-                        # Identify prediction columns for selected target
-                        low_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "low" in c.lower()), None)
-                        med_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "med" in c.lower()), None)
-                        up_col  = next((c for c in result_batch.columns if selected.lower() in c.lower() and "up"  in c.lower()), None)
-
-                        if not (low_col and med_col and up_col):
-                            st.error("Could not find prediction columns in the results.")
+        try:
+            df_batch = pd.read_csv(uploaded_file)
+            
+            # Show file info
+            st.success(f"✅ File uploaded successfully! ({len(df_batch)} records)")
+            
+            with st.expander("🔍 Preview Data", expanded=True):
+                tab1, tab2 = st.tabs(["First 10 rows", "Data Info"])
+                with tab1:
+                    st.dataframe(df_batch.head(10), use_container_width=True)
+                with tab2:
+                    st.write(f"**Shape:** {df_batch.shape[0]} rows × {df_batch.shape[1]} columns")
+                    st.write("**Columns:**")
+                    st.write(list(df_batch.columns))
+            
+            # Check required columns
+            st.subheader("🔧 Configuration")
+            required_cols = ['NO_SIRI', selected]
+            missing_cols = [col for col in required_cols if col not in df_batch.columns]
+            
+            if missing_cols:
+                st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
+                st.info("Please ensure your CSV contains these columns before proceeding.")
+            else:
+                # Optional: Let user map columns if needed
+                if st.checkbox("Show column mapping", help="Map your CSV columns to expected columns"):
+                    col_mapping = {}
+                    for req_col in required_cols + list(FEATURES[selected]["num"]):
+                        if req_col in df_batch.columns:
+                            col_mapping[req_col] = req_col
                         else:
-                            # Construct clean output table
-                            clean_df = pd.DataFrame()
-                            clean_df["NO_SIRI"] = df_batch["NO_SIRI"]
-                            clean_df[f"{selected}_ACTUAL"] = df_batch[selected]
-                            clean_df[f"{selected}_PRED_LOW"] = result_batch[low_col]
-                            clean_df[f"{selected}_PRED_MED"] = result_batch[med_col]
-                            clean_df[f"{selected}_PRED_UP"] = result_batch[up_col]
-
-                            # Compute flag for selected target
-                            flags = []
-                            for i in range(len(clean_df)):
-                                actual = clean_df.iloc[i][f"{selected}_ACTUAL"]
-                                lb = clean_df.iloc[i][f"{selected}_PRED_LOW"]
-                                ub = clean_df.iloc[i][f"{selected}_PRED_UP"]
-
-                                if actual < lb or actual > ub:
-                                    flags.append(True)
-                                else:
-                                    flags.append(False)
-
-                            clean_df[f"{selected}_FLAG"] = flags
-
-                            # Store in session state
-                            st.session_state.batch_results = clean_df
-
-                            # Split into issue / OK
-                            df_issue = clean_df[clean_df[f"{selected}_FLAG"] == True]
-                            df_ok    = clean_df[clean_df[f"{selected}_FLAG"] == False]
-
-                            # Summary statistics
-                            total = len(clean_df)
-                            total_issue = len(df_issue)
-                            total_ok = len(df_ok)
-                            pct_issue = round((total_issue / total) * 100, 2) if total > 0 else 0
-                            pct_ok = round((total_ok / total) * 100, 2) if total > 0 else 0
-
-                            # Display summary
-                            st.subheader("📊 Batch Results Summary")
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Total Records", total)
-                            with col2:
-                                st.metric("Records with Issues", total_issue, f"{pct_issue}%")
-                            with col3:
-                                st.metric("Records OK", total_ok, f"{pct_ok}%")
-
-                            # Create pie chart for visualization
-                            fig_pie = px.pie(
-                                values=[total_issue, total_ok],
-                                names=['With Issues', 'OK'],
-                                title=f"Distribution of QC Flags for {selected}",
-                                color=['With Issues', 'OK'],
-                                color_discrete_map={'With Issues':'red', 'OK':'green'}
+                            options = [col for col in df_batch.columns if col not in col_mapping.values()]
+                            selected_col = st.selectbox(
+                                f"Map column for '{req_col}'",
+                                options=[""] + options,
+                                key=f"map_{req_col}"
                             )
-                            st.plotly_chart(fig_pie, use_container_width=True)
-
-                            # Display tables in tabs
-                            tab1, tab2, tab3 = st.tabs(["⚠️ Issues", "✅ OK Records", "📋 All Results"])
-
-                            with tab1:
-                                st.subheader(f"Records with Issues ({selected})")
-                                if df_issue.empty:
-                                    st.success("🎉 No issues detected for this target!")
-                                else:
-                                    st.dataframe(df_issue, use_container_width=True)
-                                    st.caption(f"Showing {len(df_issue)} records with potential issues")
-
-                            with tab2:
-                                st.subheader(f"Records without Issues ({selected})")
-                                st.dataframe(df_ok, use_container_width=True)
-                                st.caption(f"Showing {len(df_ok)} records without issues")
-
-                            with tab3:
-                                st.subheader(f"All Results ({selected})")
-                                st.dataframe(clean_df, use_container_width=True)
-
-                            # Download buttons
-                            st.subheader("📥 Download Results")
+                            if selected_col:
+                                col_mapping[req_col] = selected_col
+                
+                # Run batch prediction
+                if st.button("🚀 Run Batch Analysis", type="primary", use_container_width=True):
+                    with st.spinner("Processing batch data..."):
+                        try:
+                            result_batch = predict_new(df_batch, out_dir=str(MODEL_DIR))
                             
-                            col1, col2 = st.columns(2)
+                            # Store NO_SIRI
+                            if "NO_SIRI" in df_batch.columns:
+                                result_batch["NO_SIRI"] = df_batch["NO_SIRI"]
                             
-                            with col1:
-                                csv_issues = df_issue.to_csv(index=False).encode('utf-8')
-                                st.download_button(
-                                    label=f"Download Issues Only ({len(df_issue)} records)",
-                                    data=csv_issues,
-                                    file_name=f"qc_issues_{selected}.csv",
-                                    mime="text/csv",
-                                    help="Download only records with QC issues"
+                            # Find prediction columns
+                            low_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "low" in c.lower()), None)
+                            med_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "med" in c.lower()), None)
+                            up_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "up" in c.lower()), None)
+                            
+                            if not (low_col and med_col and up_col):
+                                st.error("Could not find prediction columns in results.")
+                            else:
+                                # Create results dataframe
+                                clean_df = pd.DataFrame()
+                                clean_df["NO_SIRI"] = df_batch["NO_SIRI"]
+                                clean_df[f"{selected}_ACTUAL"] = df_batch[selected]
+                                clean_df[f"{selected}_PRED_LOW"] = result_batch[low_col]
+                                clean_df[f"{selected}_PRED_MED"] = result_batch[med_col]
+                                clean_df[f"{selected}_PRED_UP"] = result_batch[up_col]
+                                
+                                # Calculate flags
+                                conditions = (
+                                    (clean_df[f"{selected}_ACTUAL"] < clean_df[f"{selected}_PRED_LOW"]) |
+                                    (clean_df[f"{selected}_ACTUAL"] > clean_df[f"{selected}_PRED_UP"])
                                 )
-                            
-                            with col2:
-                                csv_all = clean_df.to_csv(index=False).encode('utf-8')
-                                st.download_button(
-                                    label=f"Download All Results ({total} records)",
-                                    data=csv_all,
-                                    file_name=f"qc_results_{selected}.csv",
-                                    mime="text/csv",
-                                    help="Download all results including flags"
+                                clean_df[f"{selected}_FLAG"] = conditions
+                                
+                                # Store in session state
+                                st.session_state.batch_results = clean_df
+                                
+                                # Analysis results
+                                st.success("✅ Batch analysis completed!")
+                                
+                                # Summary metrics
+                                total = len(clean_df)
+                                issues = clean_df[f"{selected}_FLAG"].sum()
+                                ok_count = total - issues
+                                issue_pct = (issues / total * 100) if total > 0 else 0
+                                
+                                st.subheader("📊 Analysis Summary")
+                                
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Total Records", total)
+                                with col2:
+                                    st.metric("Issues Detected", f"{issues} ({issue_pct:.1f}%)")
+                                with col3:
+                                    st.metric("Records OK", ok_count)
+                                
+                                # Visualization
+                                fig_summary = px.pie(
+                                    names=['With Issues', 'OK'],
+                                    values=[issues, ok_count],
+                                    title=f'Distribution for {selected}',
+                                    color=['With Issues', 'OK'],
+                                    color_discrete_map={'With Issues': '#EF4444', 'OK': '#10B981'}
                                 )
-
-                            st.success("✅ Batch processing completed successfully!")
-
-                    except Exception as e:
-                        st.error(f"Error during batch processing: {str(e)}")
-                        st.info("Please check your input data format and model compatibility.")
+                                st.plotly_chart(fig_summary, use_container_width=True)
+                                
+                                # Detailed results in tabs
+                                st.subheader("📋 Detailed Results")
+                                tab1, tab2, tab3 = st.tabs(["⚠️ Issues", "✅ OK Records", "📄 All Data"])
+                                
+                                with tab1:
+                                    if issues > 0:
+                                        df_issues = clean_df[clean_df[f"{selected}_FLAG"]]
+                                        st.dataframe(df_issues, use_container_width=True)
+                                    else:
+                                        st.success("No issues detected! 🎉")
+                                
+                                with tab2:
+                                    df_ok = clean_df[~clean_df[f"{selected}_FLAG"]]
+                                    st.dataframe(df_ok, use_container_width=True)
+                                
+                                with tab3:
+                                    st.dataframe(clean_df, use_container_width=True)
+                                
+                                # Download options
+                                st.subheader("💾 Download Results")
+                                
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    csv_issues = clean_df[clean_df[f"{selected}_FLAG"]].to_csv(index=False)
+                                    st.download_button(
+                                        label=f"Download Issues ({issues} records)",
+                                        data=csv_issues,
+                                        file_name=f"qc_issues_{selected}.csv",
+                                        mime="text/csv"
+                                    )
+                                
+                                with col2:
+                                    csv_all = clean_df.to_csv(index=False)
+                                    st.download_button(
+                                        label=f"Download All Results ({total} records)",
+                                        data=csv_all,
+                                        file_name=f"qc_results_{selected}.csv",
+                                        mime="text/csv"
+                                    )
+                                
+                                # Show sample of flagged records
+                                if issues > 0:
+                                    st.subheader("🔍 Sample of Flagged Records")
+                                    sample_issues = clean_df[clean_df[f"{selected}_FLAG"]].head(5)
+                                    for idx, row in sample_issues.iterrows():
+                                        actual = row[f"{selected}_ACTUAL"]
+                                        low = row[f"{selected}_PRED_LOW"]
+                                        up = row[f"{selected}_PRED_UP"]
+                                        
+                                        if actual < low:
+                                            msg = f"Record {row['NO_SIRI']}: {actual:,.2f} < {low:,.2f} (Lower Bound)"
+                                        else:
+                                            msg = f"Record {row['NO_SIRI']}: {actual:,.2f} > {up:,.2f} (Upper Bound)"
+                                        
+                                        st.warning(msg)
+                        
+                        except Exception as e:
+                            st.error(f"❌ Error during batch processing: {str(e)}")
+                            st.info("Please check your data format and try again.")
+        
+        except Exception as e:
+            st.error(f"❌ Error reading CSV file: {str(e)}")
+            st.info("Please ensure you're uploading a valid CSV file.")
 
 # -----------------------------------------------------
 # Footer
 # -----------------------------------------------------
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; color: gray;">
-    <p>BE 2026 — ML-Driven Quality Control System</p>
-    <p>For issues or questions, please contact the development team.</p>
+<div style="text-align: center; color: #6B7280; padding: 1rem;">
+    <p>BE 2026 — Machine Learning Quality Control System</p>
+    <p style="font-size: 0.9rem;">Version 1.0 • For official use</p>
 </div>
 """, unsafe_allow_html=True)
