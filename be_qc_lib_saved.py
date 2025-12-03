@@ -15,9 +15,8 @@ def to_num(x):
 
 def load_target_models(out_dir, target):
     """
-    Try to load models from either:
-    1. Subdirectory structure: out_dir/target/meta_target.json
-    2. Flat structure: out_dir/meta_target.json
+    Load models for a specific target.
+    Handles both absolute paths (from local) and relative paths (for cloud).
     """
     # Try subdirectory structure first
     tdir = os.path.join(out_dir, target)
@@ -34,23 +33,48 @@ def load_target_models(out_dir, target):
     with open(meta_path, "r", encoding="utf-8") as f:
         meta = json.load(f)
     
-    # Load preprocessor and models (paths in meta might be absolute or relative)
-    preproc_path = meta["preproc"]
-    if not os.path.isabs(preproc_path):
-        preproc_path = os.path.join(tdir, os.path.basename(preproc_path))
+    # Smart path resolution: try to find files even if meta has absolute paths
+    def resolve_model_path(meta_path_value, tdir, target, file_type):
+        """Try multiple strategies to find the model file"""
+        # Strategy 1: Use path as-is if it exists (for local absolute paths)
+        if os.path.exists(meta_path_value):
+            return meta_path_value
+        
+        # Strategy 2: Look for file by basename in target directory
+        basename = os.path.basename(meta_path_value)
+        candidate = os.path.join(tdir, basename)
+        if os.path.exists(candidate):
+            return candidate
+        
+        # Strategy 3: Try common naming patterns
+        patterns = [
+            f"{file_type}_{target}.joblib",
+            f"{file_type}_{target}.pkl",
+            f"lgb_{target}_{file_type}.txt",
+            f"{file_type}_{target}.txt",
+        ]
+        for pattern in patterns:
+            candidate = os.path.join(tdir, pattern)
+            if os.path.exists(candidate):
+                return candidate
+        
+        # If nothing works, raise error with helpful message
+        raise FileNotFoundError(
+            f"Could not find {file_type} file for {target}. "
+            f"Looked in {tdir}. Available files: {os.listdir(tdir)}"
+        )
     
-    lgb_lower_path = meta["lgb_lower"]
-    if not os.path.isabs(lgb_lower_path):
-        lgb_lower_path = os.path.join(tdir, os.path.basename(lgb_lower_path))
+    # Resolve paths for all model components
+    try:
+        preproc_path = resolve_model_path(meta["preproc"], tdir, target, "preproc")
+        lgb_lower_path = resolve_model_path(meta["lgb_lower"], tdir, target, "lower")
+        lgb_median_path = resolve_model_path(meta["lgb_median"], tdir, target, "median")
+        lgb_upper_path = resolve_model_path(meta["lgb_upper"], tdir, target, "upper")
+    except Exception as e:
+        print(f"Error resolving paths for {target}: {str(e)}")
+        raise
     
-    lgb_median_path = meta["lgb_median"]
-    if not os.path.isabs(lgb_median_path):
-        lgb_median_path = os.path.join(tdir, os.path.basename(lgb_median_path))
-    
-    lgb_upper_path = meta["lgb_upper"]
-    if not os.path.isabs(lgb_upper_path):
-        lgb_upper_path = os.path.join(tdir, os.path.basename(lgb_upper_path))
-    
+    # Load models
     preproc = joblib.load(preproc_path)
     m_low = lgb.Booster(model_file=lgb_lower_path)
     m_med = lgb.Booster(model_file=lgb_median_path)
