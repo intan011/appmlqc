@@ -3,21 +3,24 @@ import pandas as pd
 import sys
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 
 # -----------------------------------------------------
 # Load prediction library
 # -----------------------------------------------------
-sys.path.append(r"D:\app ML QC\app ML QC")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.append(BASE_DIR)
 from be_qc_lib_saved import predict_new
 
-MODEL_DIR = r"D:\app ML QC\app ML QC\be_qc_models"
-LOOKUP = r"D:\app ML QC\app ML QC\lookup"
+MODEL_DIR = os.path.join(BASE_DIR, "be_qc_models")
+LOOKUP = os.path.join(BASE_DIR, "lookup")
 
 # -----------------------------------------------------
 # Load lookups (dependency)
 # -----------------------------------------------------
-df_hierarchy = pd.read_csv(f"{LOOKUP}/lookup_sektor_subsektor_msic.csv")
-df_nd = pd.read_csv(f"{LOOKUP}/lookup_negeri_daerah.csv")
+df_hierarchy = pd.read_csv(os.path.join(LOOKUP, "lookup_sektor_subsektor_msic.csv"))
+df_nd = pd.read_csv(os.path.join(LOOKUP, "lookup_negeri_daerah.csv"))
 
 # -----------------------------------------------------
 # Targets + features
