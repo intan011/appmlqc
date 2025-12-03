@@ -104,15 +104,15 @@ if mode == "Single Input":
         df_input = pd.DataFrame([user_input])
         result = predict_new(df_input, out_dir=str(MODEL_DIR))
 
-        # filter selection
-        selected_cols = [c for c in result.columns if selected.lower() in c.lower()]
+        # Show ALL columns for the selected target (including PRED_MED, PRED_LOW, PRED_UP, FLAG)
         st.subheader("Prediction Result")
+        selected_cols = [c for c in result.columns if selected in c]
         st.dataframe(result[selected_cols])
 
         # Extract boundaries
-        low_col = next((c for c in result.columns if "low" in c.lower() and selected.lower() in c.lower()), None)
-        med_col = next((c for c in result.columns if "med" in c.lower() and selected.lower() in c.lower()), None)
-        up_col  = next((c for c in result.columns if "up"  in c.lower() and selected.lower() in c.lower()), None)
+        low_col = next((c for c in result.columns if "low" in c.lower() and selected in c), None)
+        med_col = next((c for c in result.columns if "med" in c.lower() and selected in c), None)
+        up_col  = next((c for c in result.columns if "up" in c.lower() and selected in c), None)
 
         if low_col and med_col and up_col:
             lb = float(result[low_col].iloc[0])
@@ -186,9 +186,9 @@ if mode == "Batch (CSV Upload)":
                 result_batch["NO_SIRI"] = df_batch["NO_SIRI"]
 
             # Identify prediction columns for selected target
-            low_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "low" in c.lower()), None)
-            med_col = next((c for c in result_batch.columns if selected.lower() in c.lower() and "med" in c.lower()), None)
-            up_col  = next((c for c in result_batch.columns if selected.lower() in c.lower() and "up"  in c.lower()), None)
+            low_col = next((c for c in result_batch.columns if selected in c and "low" in c.lower()), None)
+            med_col = next((c for c in result_batch.columns if selected in c and "med" in c.lower()), None)
+            up_col  = next((c for c in result_batch.columns if selected in c and "up" in c.lower()), None)
 
             actual_col = selected   # from original dataset
 
